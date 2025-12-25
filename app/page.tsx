@@ -45,7 +45,7 @@ export default function ChristmasPage() {
             Merry Christmas
           </h1>
           <h1 className="text-white text-4xl font-bold tracking-widest uppercase" style={{ textShadow: '0 0 20px rgba(255,255,255,0.5)' }}>
-            Mengtong, 圣诞快乐！
+            Mengtong 圣诞快乐！
           </h1>
           {/* 底部居中作者小字 */}
           <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-sm opacity-50">
