@@ -39,13 +39,27 @@ jobs:
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SERVER_HOST }}     # 服务器 IP
-          username: ${{ secrets.SERVER_USER }} # 服务器用户名
-          key: ${{ secrets.SERVER_SSH_KEY }}   # SSH 私钥
-          port: ${{ secrets.SERVER_SSH_PORT || 22 }}   # SSH 端口，默认22
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT || 22 }}
           script: |
-            cd /Deploy/stair-up-web
-            git pull origin main
+            # 检查目录是否存在
+            if [ ! -d /Deploy/stair-up-web ]; then
+              mkdir -p /Deploy
+              cd /Deploy
+              git clone https://github.com/${{ github.repository }}.git stair-up-web
+            else
+              cd /Deploy/stair-up-web
+              git pull origin main
+            fi
+            
+            # 安装全局工具
+            npm install -g pnpm pm2
+            
+            # 构建和部署
             pnpm install --frozen-lockfile
             pnpm build
-            pm2 reload ecosystem.config.js --update-env
+            pm2 delete stair-up-web || true
+            pm2 start ecosystem.config.js --update-env
+            pm2 save
