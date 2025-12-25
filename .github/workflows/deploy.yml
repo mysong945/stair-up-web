@@ -8,34 +8,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
-    # 1. 拉取代码
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # 2. 安装 pnpm
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9 # 或者指定你的版本
-
-      # 3. 设置 Node.js 环境并开启 pnpm 缓存
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'pnpm'
-      
-      # 4. 安装依赖
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # 5. 构建项目
-      - name: Build project
-        run: pnpm build
-
-      # 6. 通过 SSH 部署到服务器
+      # 通过 SSH 部署到服务器
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -46,23 +20,18 @@ jobs:
           script: |
             # 加载环境变量
             source ~/.zshrc
-            
-            # 检查目录是否存在
-            if [ ! -d /Deploy/stair-up-web ]; then
-              mkdir -p /Deploy
-              cd /Deploy
-              git clone https://github.com/${{ github.repository }}.git stair-up-web
-            else
-              cd /Deploy/stair-up-web
-              git pull origin main
-            fi
-            
-            # 安装全局工具
-            npm install -g pnpm pm2
-            
-            # 构建和部署
+
+            # 1. 进入目录（假设你已经手动克隆过一次，或者参考下面的逻辑）
+            mkdir -p /Deploy
+            cd /Deploy/stair-up-web || (git clone https://github.com/${{ github.repository }}.git stair-up-web && cd stair-up-web)
+
+            # 2. 拉取最新代码
+            git pull origin main
+
+            # 3. 安装依赖
             pnpm install --frozen-lockfile
-            pnpm build
-            pm2 delete stair-up-web || true
-            pm2 start ecosystem.config.js --update-env
+            pnpm run build
+
+            # 4. 重启服务（假设使用 PM2 管理进程）
+            pm2 startOrReload ecosystem.config.js --update-env
             pm2 save
