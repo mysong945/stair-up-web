@@ -1,4 +1,4 @@
-name: Deploy Next.js Application
+name: 部署到服务器
 
 on:
   push:
