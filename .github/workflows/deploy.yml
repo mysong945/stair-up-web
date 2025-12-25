@@ -32,6 +32,7 @@ jobs:
             pnpm install --frozen-lockfile
             pnpm run build
 
-            # 4. 重启服务（假设使用 PM2 管理进程）
-            pm2 startOrReload ecosystem.config.js --update-env
+            # 4. 删除旧的进程并启动新进程
+            pm2 delete stair-up-web || true
+            pm2 start pnpm --name "stair-up-web" -- start
             pm2 save
