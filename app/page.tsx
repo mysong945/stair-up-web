@@ -44,6 +44,9 @@ export default function ChristmasPage() {
           <h1 className="text-white text-4xl font-bold tracking-widest uppercase" style={{ textShadow: '0 0 20px rgba(255,255,255,0.5)' }}>
             Merry Christmas
           </h1>
+          <h1 className="text-white text-4xl font-bold tracking-widest uppercase" style={{ textShadow: '0 0 20px rgba(255,255,255,0.5)' }}>
+            Mengtong, 圣诞快乐！
+          </h1>
         </div>
       </div>
 
