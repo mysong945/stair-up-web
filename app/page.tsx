@@ -1,4 +1,3 @@
-"use client";
 import MusicPlayer from '@/components/MusicPlayer';
 import Snowfall from '@/components/Snowfall';
 import RedHat from '@/components/RedHat';
