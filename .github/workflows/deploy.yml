@@ -1,0 +1,51 @@
+name: Deploy Next.js Application
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # 1. 拉取代码
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 安装 pnpm
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9 # 或者指定你的版本
+
+      # 3. 设置 Node.js 环境并开启 pnpm 缓存
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+      
+      # 4. 安装依赖
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 5. 构建项目
+      - name: Build project
+        run: pnpm build
+
+      # 6. 通过 SSH 部署到服务器
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}     # 服务器 IP
+          username: ${{ secrets.SERVER_USER }} # 服务器用户名
+          key: ${{ secrets.SERVER_SSH_KEY }}   # SSH 私钥
+          port: ${{ secrets.SERVER_SSH_PORT || 22 }}   # SSH 端口，默认22
+          script: |
+            cd /Deploy/stair-up-web
+            git pull origin main
+            pnpm install --frozen-lockfile
+            pnpm build
+            pm2 reload ecosystem.config.js --update-env

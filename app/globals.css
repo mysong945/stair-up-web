@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: transparent; /* 让 page.tsx 的背景色生效 */
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* 让星星更有光泽感 */
+.star {
+  filter: drop-shadow(0 0 15px rgba(255, 223, 0, 0.8));
+}
