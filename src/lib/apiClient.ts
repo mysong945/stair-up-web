@@ -4,7 +4,10 @@
  */
 
 // ==================== 配置 ====================
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://10.10.81.199:7080';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_USE_DEBUG === 'true'
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL_DEBUG || 'http://localhost:7080')
+    : (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:7080');
+    
 const API_VERSION = '/api/v1';
 const TOKEN_KEY = 'auth_token';
 
@@ -165,7 +168,6 @@ class ApiClient {
                 }, 1000);
                 return {
                     error: '认证失败，即将跳转到登录页...',
-                    data: null,
                 };
             }
 
@@ -173,7 +175,6 @@ class ApiClient {
             if (!response.ok) {
                 return {
                     error: data.error || data.message || `HTTP ${response.status}: ${response.statusText}`,
-                    data: null,
                 };
             }
 
@@ -190,7 +191,6 @@ class ApiClient {
 
             return {
                 error: error instanceof Error ? error.message : '网络请求失败，请检查网络连接',
-                data: null,
             };
         }
     }

@@ -2,15 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-import { Database } from '@/types/supabase';
-import { User } from '@supabase/supabase-js';
+import { api, tokenManager } from '@/lib/apiService';
+import type { User, TrainingSession, LapStats } from '@/lib/apiService';
 
 
-type TrainingSessionRow = Database['public']['Tables']['training_sessions']['Row'];
-type LapStatsRow = Database['public']['Views']['lap_stats_view']['Row'];
-
-interface LapRecord extends LapStatsRow {
+interface LapRecord extends LapStats {
   formatted_cost_time: string;
   formatted_created_time: string;
 }
@@ -30,121 +26,119 @@ export default function SessionDetailPage() {
   const sessionId = params.id as string;
   
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<TrainingSessionRow | null>(null);
+  const [session, setSession] = useState<TrainingSession | null>(null);
   const [lapRecords, setLapRecords] = useState<LapRecord[]>([]);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 检查用户认证状态
   useEffect(() => {
     const checkUser = async () => {
       try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        setUser(currentUser);
-
-        if (!currentUser) {
+        if (!tokenManager.isAuthenticated()) {
           router.push('/login');
+          return;
         }
+
+        const userResponse = await api.user.getCurrentUser();
+        if (userResponse.error || !userResponse.data) {
+          tokenManager.clearToken();
+          router.push('/login');
+          return;
+        }
+
+        setUser(userResponse.data);
       } catch (error) {
         console.error('Error checking user:', error);
+        tokenManager.clearToken();
         router.push('/login');
       }
     };
 
     checkUser();
-
-    // 监听认证状态变化
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        router.push('/login');
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, [router]);
 
   // 获取会话详情和lap记录
+  const fetchSessionDetails = async (forceUpdate: boolean = false) => {
+    if (!forceUpdate) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+    setError(null);
+
+    try {
+      // 获取会话详情
+      const sessionResponse = await api.session.getSessionById(sessionId, forceUpdate);
+      if (sessionResponse.error || !sessionResponse.data) {
+        throw new Error(sessionResponse.error || '会话不存在或无权访问');
+      }
+
+      setSession(sessionResponse.data);
+
+      // 获取lap统计
+      const lapsResponse = await api.lap.getLapStats(sessionId, forceUpdate);
+      if (lapsResponse.error) {
+        console.error('Error loading laps:', lapsResponse.error);
+      }
+
+      const lapsData = lapsResponse.data || [];
+      const processedLaps: LapRecord[] = lapsData.map((lap: LapStats) => {
+        const lapTimeSeconds = lap.lap_time_seconds;
+        const minutes = Math.floor(lapTimeSeconds / 60);
+        const seconds = Math.floor(lapTimeSeconds % 60);
+        return {
+          ...lap,
+          lap_time_seconds: lapTimeSeconds,
+          formatted_cost_time: `${minutes.toString().padStart(2, '0')}:${seconds
+            .toString()
+            .padStart(2, '0')}`,
+          formatted_created_time: formatDateTime(lap.lap_finish_time),
+        };
+      });
+
+      setLapRecords(processedLaps);
+
+      if (processedLaps.length > 0 && sessionResponse.data) {
+        const total_laps = processedLaps.length;
+        const total_time_seconds = processedLaps.reduce(
+          (sum, lap) => sum + lap.lap_time_seconds,
+          0
+        );
+        const average_time_per_lap = total_time_seconds / total_laps;
+        const fastest_lap_time = Math.min(
+          ...processedLaps.map((lap) => lap.lap_time_seconds)
+        );
+        const slowest_lap_time = Math.max(
+          ...processedLaps.map((lap) => lap.lap_time_seconds)
+        );
+        const total_floors_climbed =
+          sessionResponse.data.floors_per_lap * total_laps;
+
+        setStats({
+          total_laps,
+          total_floors_climbed,
+          total_time_seconds,
+          average_time_per_lap,
+          fastest_lap_time,
+          slowest_lap_time,
+        });
+      }
+    } catch (err) {
+      setError('获取会话详情失败，请稍后重试');
+      console.error('Error fetching session details:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  // 变更时重新获取数据
   useEffect(() => {
     if (!user || !sessionId) return;
-
-    const fetchSessionDetails = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // 获取会话详情
-        const { data: sessionData, error: sessionError } = await supabase
-          .from('training_sessions')
-          .select('*')
-          .eq('id', sessionId)
-          .eq('user_id', user.id)
-          .single();
-
-        if (sessionError) throw sessionError;
-        if (!sessionData) {
-          throw new Error('会话不存在或无权访问');
-        }
-
-        setSession(sessionData);
-
-        const { data: lapsData, error: lapsError } = await (supabase
-          .from('lap_stats_view') as any)
-          .select('*')
-          .eq('session_id', sessionId)
-          .order('lap_number', { ascending: true });
-
-        if (lapsError) throw lapsError;
-
-        const processedLaps: LapRecord[] = (lapsData || []).map((lap: LapStatsRow) => {
-          const minutes = Math.floor(lap.lap_time_seconds / 60);
-          const seconds = lap.lap_time_seconds % 60;
-          return {
-            ...lap,
-            formatted_cost_time: `${minutes.toString().padStart(2, '0')}:${seconds
-              .toString()
-              .padStart(2, '0')}`,
-            formatted_created_time: formatDateTime(lap.lap_finish_time),
-          };
-        });
-
-        setLapRecords(processedLaps);
-
-        if (processedLaps.length > 0 && sessionData) {
-          const total_laps = processedLaps.length;
-          const total_time_seconds = processedLaps.reduce(
-            (sum, lap) => sum + lap.lap_time_seconds,
-            0
-          );
-          const average_time_per_lap = total_time_seconds / total_laps;
-          const fastest_lap_time = Math.min(
-            ...processedLaps.map((lap) => lap.lap_time_seconds)
-          );
-          const slowest_lap_time = Math.max(
-            ...processedLaps.map((lap) => lap.lap_time_seconds)
-          );
-          const total_floors_climbed =
-            (sessionData as TrainingSessionRow).floors_per_lap * total_laps;
-
-          setStats({
-            total_laps,
-            total_floors_climbed,
-            total_time_seconds,
-            average_time_per_lap,
-            fastest_lap_time,
-            slowest_lap_time,
-          });
-        }
-      } catch (err) {
-        setError('获取会话详情失败，请稍后重试');
-        console.error('Error fetching session details:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchSessionDetails();
+    fetchSessionDetails(false);
   }, [user, sessionId, router]);
 
   // 格式化日期时间
@@ -173,6 +167,11 @@ export default function SessionDetailPage() {
   // 返回历史记录列表
   const handleBackToList = () => {
     router.push('/history');
+  };
+
+  // 刷新数据
+  const handleRefresh = async () => {
+    await fetchSessionDetails(true);
   };
 
   if (isLoading) {
@@ -232,15 +231,39 @@ export default function SessionDetailPage() {
           {/* 页面标题和返回按钮 */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-gray-900">训练会话详情</h2>
-            <button
-              onClick={handleBackToList}
-              className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              返回列表
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                title="刷新数据"
+              >
+                <svg
+                  className={`w-6 h-6 text-gray-600 transition-transform ${
+                    isRefreshing ? 'animate-spin' : ''
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={handleBackToList}
+                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                返回列表
+              </button>
+            </div>
           </div>
 
           {/* 会话详情卡片 */}
@@ -355,7 +378,7 @@ export default function SessionDetailPage() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {lapRecords.map((lap) => (
-                      <tr key={lap.lap_id} className="hover:bg-gray-50">
+                      <tr key={lap.lap_number} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           第 {lap.lap_number} 趟
                         </td>

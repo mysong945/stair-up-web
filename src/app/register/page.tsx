@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { api } from '@/lib/apiService';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -55,23 +55,19 @@ export default function RegisterPage() {
     setErrors({});
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const response = await api.user.register({
+        username: displayName,
         email,
         password,
-        options: {
-          data: {
-            display_name: displayName
-          }
-        }
       });
 
-      if (error) {
-        setErrors({ general: error.message });
+      if (response.error) {
+        setErrors({ general: response.error });
         return;
       }
 
-      // 注册成功，跳转到登录页面
-      router.push('/login');
+      // 注册成功，自动登录后跳转到首页
+      router.push('/');
     } catch (error) {
       setErrors({ general: '注册过程中发生错误，请稍后重试' });
     } finally {

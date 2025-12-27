@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabaseClient';
+import { api, tokenManager } from '@/lib/apiService';
+import type { User } from '@/lib/apiService';
 import { createPortal } from 'react-dom';
 
 export default function SettingsPage() {
@@ -20,21 +20,27 @@ export default function SettingsPage() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const {
-          data: { user: currentUser },
-        } = await supabase.auth.getUser();
-
-        if (!currentUser) {
+        if (!tokenManager.isAuthenticated()) {
           router.push('/login');
           return;
         }
 
+        const userResponse = await api.user.getCurrentUser();
+        if (userResponse.error || !userResponse.data) {
+          setErrors({ general: '加载用户信息失败，请稍后重试' });
+          tokenManager.clearToken();
+          router.push('/login');
+          return;
+        }
+
+        const currentUser = userResponse.data;
         setUser(currentUser);
-        setDisplayName((currentUser.user_metadata as any)?.display_name || '');
-        setPhone((currentUser.user_metadata as any)?.phone || '');
+        setDisplayName(currentUser.metadata?.nickname || currentUser.username || '');
+        setPhone(currentUser.metadata?.phone || '');
         setEmail(currentUser.email || '');
       } catch (error) {
         setErrors({ general: '加载用户信息失败，请稍后重试' });
+        tokenManager.clearToken();
         router.push('/login');
       } finally {
         setIsLoading(false);
@@ -42,17 +48,6 @@ export default function SettingsPage() {
     };
 
     loadUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        router.push('/login');
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, [router]);
 
   const validate = () => {
@@ -81,20 +76,21 @@ export default function SettingsPage() {
     setErrors({});
 
     try {
-      const { data, error } = await supabase.auth.updateUser({
-        data: {
-          display_name: displayName,
+      const response = await api.user.updateUser({
+        username: displayName,
+        metadata: {
+          nickname: displayName,
           phone,
         },
       });
 
-      if (error) {
-        setErrors({ general: error.message });
+      if (response.error) {
+        setErrors({ general: response.error });
         return;
       }
 
-      if (data.user) {
-        setUser(data.user);
+      if (response.data) {
+        setUser(response.data);
         setShowSuccess(true);
         setTimeout(() => {
           setShowSuccess(false);
@@ -227,7 +223,7 @@ export default function SettingsPage() {
           <div className="mt-2 pt-3 border-t border-gray-100">
             <button
               onClick={async () => {
-                await supabase.auth.signOut();
+                api.user.logout();
                 router.push('/login');
               }}
               className="w-full min-h-[48px] flex items-center justify-center px-6 py-3 bg-red-50 text-red-600 font-semibold rounded-xl hover:bg-red-100 active:scale-[0.98] transition-all duration-200"

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { api } from '@/lib/apiService';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,13 +41,13 @@ export default function LoginPage() {
     setErrors({});
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const response = await api.user.login({
         email,
         password,
       });
 
-      if (error) {
-        setErrors({ general: error.message });
+      if (response.error) {
+        setErrors({ general: response.error });
         return;
       }
 

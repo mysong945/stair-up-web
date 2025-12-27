@@ -22,15 +22,13 @@ export interface User {
 
 export interface UserStats {
   total_sessions: number;
-  total_time: number;
-  total_floors: number;
-  this_week_sessions: number;
-  last_session?: {
-    id: string;
-    start_time: string;
-    end_time: string;
-    floors_achieved: number;
-  };
+  total_minutes: number;
+  weekly_sessions: number;
+  weekly_minutes: number;
+  monthly_sessions: number;
+  monthly_minutes: number;
+  longest_session_minutes: number;
+  average_session_minutes: number;
 }
 
 export interface RankingUser {
@@ -56,12 +54,11 @@ export interface TrainingSession {
 
 // 圈数统计类型
 export interface LapStats {
+  lap_id: string;
   session_id: string;
+  lap_finish_time: string;
   lap_number: number;
-  lap_time: string;
-  total_laps: number;
-  total_floors: number;
-  avg_lap_duration?: number;
+  lap_time_seconds: number;
 }
 
 // ==================== 用户 API ====================
@@ -133,7 +130,7 @@ export const userApi = {
     const queryParams = new URLSearchParams();
     if (params.limit) queryParams.append('limit', params.limit.toString());
     if (params.by) queryParams.append('by', params.by);
-    if (params.force_update !== undefined) 
+    if (params.force_update !== undefined)
       queryParams.append('force_update', params.force_update.toString());
 
     const endpoint = `/rankings${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
@@ -159,16 +156,21 @@ export const sessionApi = {
 
   /**
    * 获取已完成的训练会话列表
+   * @param forceUpdate 强制更新缓存
    */
-  async getFinishedSessions() {
-    return apiClient.get<TrainingSession[]>('/sessions/finished');
+  async getFinishedSessions(forceUpdate: boolean = false) {
+    const endpoint = forceUpdate ? '/sessions/finished?force_update=true' : '/sessions/finished';
+    return apiClient.get<TrainingSession[]>(endpoint);
   },
 
   /**
    * 根据 ID 获取训练会话详情
+   * @param sessionId 会话 ID
+   * @param forceUpdate 强制更新缓存
    */
-  async getSessionById(sessionId: string) {
-    return apiClient.get<TrainingSession>(`/sessions/${sessionId}`);
+  async getSessionById(sessionId: string, forceUpdate: boolean = false) {
+    const endpoint = forceUpdate ? `/sessions/${sessionId}?force_update=true` : `/sessions/${sessionId}`;
+    return apiClient.get<TrainingSession>(endpoint);
   },
 
   /**
@@ -218,9 +220,12 @@ export const lapApi = {
 
   /**
    * 获取会话的圈数统计
+   * @param sessionId 会话 ID
+   * @param forceUpdate 强制更新缓存
    */
-  async getLapStats(sessionId: string) {
-    return apiClient.get<LapStats[]>(`/lap/stats/${sessionId}`);
+  async getLapStats(sessionId: string, forceUpdate: boolean = false) {
+    const endpoint = forceUpdate ? `/lap/stats/${sessionId}?force_update=true` : `/lap/stats/${sessionId}`;
+    return apiClient.get<LapStats[]>(endpoint);
   },
 };
 

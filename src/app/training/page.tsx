@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabaseClient';
-import { sessionManager } from '@/lib/sessionManager';
-import type { Database } from '@/types/supabase';
+import { api, tokenManager } from '@/lib/apiService';
+import type { User, TrainingSession } from '@/lib/apiService';
 
-type TrainingSessionRow = Database['public']['Tables']['training_sessions']['Row'];
-type LapStatsRow = Database['public']['Views']['lap_stats_view']['Row'];
+interface LapRecord {
+  lap_number: number;
+  lap_finish_time: string;
+  lap_time_seconds: number;
+}
 
 function formatDuration(seconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(seconds));
@@ -30,8 +31,8 @@ function formatDuration(seconds: number): string {
 export default function TrainingPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<TrainingSessionRow | null>(null);
-  const [lapStats, setLapStats] = useState<LapStatsRow[]>([]);
+  const [session, setSession] = useState<TrainingSession | null>(null);
+  const [lapStats, setLapStats] = useState<LapRecord[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,45 +48,44 @@ export default function TrainingPage() {
   const [isCreatingLap, setIsCreatingLap] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0); // 冷却倒计时（秒）
+  const COOLDOWN_DURATION = 60; // 调试用5秒，正式环境改为60秒（1分钟）
 
   useEffect(() => {
     let cancelled = false;
 
     const init = async () => {
       try {
-        const { data } = await supabase.auth.getUser();
-        const currentUser = data.user;
+        // 检查认证
+        if (!tokenManager.isAuthenticated()) {
+          router.push('/login');
+          return;
+        }
 
-        if (!currentUser) {
+        // 获取当前用户
+        const userResponse = await api.user.getCurrentUser();
+        if (userResponse.error || !userResponse.data) {
+          tokenManager.clearToken();
           router.push('/login');
           return;
         }
 
         if (cancelled) return;
 
-        setUser(currentUser);
+        setUser(userResponse.data);
 
-        const activeSession = await sessionManager.getActiveSession(
-          currentUser
-        );
+        // 获取活跃会话
+        const activeSessionResponse = await api.session.getActiveSession();
         if (cancelled) return;
 
-        if (activeSession) {
-          setSession(activeSession);
+        if (activeSessionResponse.data && !activeSessionResponse.error) {
+          setSession(activeSessionResponse.data);
         }
 
-        const { data: historySessionsRaw, error: historyError } = await supabase
-          .from('training_sessions')
-          .select('floors_per_lap,target_floors')
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (!cancelled && !historyError && historySessionsRaw) {
-          const historySessions =
-            historySessionsRaw as Pick<
-              TrainingSessionRow,
-              'floors_per_lap' | 'target_floors'
-            >[];
+        // 获取历史会话以生成建议
+        const historyResponse = await api.session.getFinishedSessions();
+        if (!cancelled && historyResponse.data && historyResponse.data.length > 0) {
+          const historySessions = historyResponse.data;
           const uniqueFloorsPerLap = Array.from(
             new Set(
               historySessions
@@ -122,20 +122,8 @@ export default function TrainingPage() {
 
     init();
 
-    const { data } = supabase.auth.onAuthStateChange((_event, authSession) => {
-      if (!authSession) {
-        setUser(null);
-        router.push('/login');
-      } else {
-        setUser(authSession.user);
-      }
-    });
-
-    const subscription = data.subscription;
-
     return () => {
       cancelled = true;
-      subscription.unsubscribe();
     };
   }, [router]);
 
@@ -172,18 +160,20 @@ export default function TrainingPage() {
   const loadLapStats = useCallback(
     async (sessionId: string) => {
       try {
-        const { data, error: queryError } = await supabase
-          .from('lap_stats_view')
-          .select('*')
-          .eq('session_id', sessionId)
-          .order('lap_number', { ascending: true });
-
-        if (queryError) {
-          console.error('Error loading lap stats', queryError);
+        const response = await api.lap.getLapStats(sessionId);
+        if (response.error || !response.data) {
+          console.error('Error loading lap stats', response.error);
           return;
         }
 
-        setLapStats(data ?? []);
+        // 转换数据格式
+        const laps: LapRecord[] = response.data.map((stat) => ({
+          lap_number: stat.lap_number,
+          lap_finish_time: stat.lap_finish_time,
+          lap_time_seconds: stat.lap_time_seconds,
+        }));
+
+        setLapStats(laps);
       } catch (e) {
         console.error('Error loading lap stats', e);
       }
@@ -217,35 +207,29 @@ export default function TrainingPage() {
       setIsCreatingSession(true);
       setError(null);
 
-      const nowIso = new Date().toISOString();
-
       try {
-        const { data, error: insertError } = await (supabase
-          .from('training_sessions') as any)
-          .insert({
-            user_id: user.id,
-            start_time: nowIso,
-            floors_per_lap: floorsPerLap,
-            target_floors: targetFloors,
-            status: 'active',
-          } satisfies Database['public']['Tables']['training_sessions']['Insert'])
-          .select('*')
-          .single();
+        const response = await api.session.createSession({
+          floors_per_lap: floorsPerLap,
+          target_floors: targetFloors,
+        });
 
-        if (insertError) {
-          const activeSession = await sessionManager.getActiveSession(user);
-          if (activeSession) {
-            setSession(activeSession);
-            await loadLapStats(activeSession.id);
+        if (response.error) {
+          // 可能已有活跃会话
+          const activeSessionResponse = await api.session.getActiveSession();
+          if (activeSessionResponse.data) {
+            setSession(activeSessionResponse.data);
+            await loadLapStats(activeSessionResponse.data.id);
             return;
           }
-          throw insertError;
+          throw new Error(response.error);
         }
 
-        setSession(data);
-        setFloorsPerLapInput('');
-        setTargetFloorsInput('');
-        await loadLapStats(data.id);
+        if (response.data) {
+          setSession(response.data);
+          setFloorsPerLapInput('');
+          setTargetFloorsInput('');
+          await loadLapStats(response.data.id);
+        }
       } catch (err) {
         console.error('Error creating training session', err);
         setError('创建训练会话失败，请稍后重试');
@@ -269,15 +253,14 @@ export default function TrainingPage() {
     setError(null);
 
     try {
-      const { error: insertError } = await (supabase
-        .from('lap_records') as any)
-        .insert({
-          session_id: session.id,
-        } satisfies Database['public']['Tables']['lap_records']['Insert']);
+      const response = await api.session.recordLap(session.id);
 
-      if (insertError) {
-        throw insertError;
+      if (response.error) {
+        throw new Error(response.error);
       }
+
+      // 启动冷却计时
+      setCooldownSeconds(COOLDOWN_DURATION);
 
       await loadLapStats(session.id);
     } catch (err) {
@@ -291,29 +274,26 @@ export default function TrainingPage() {
   const handleFinishTraining = useCallback(async () => {
     if (!session || isFinishing) return;
 
+    // 确认完成训练
+    if (!confirm('确定要完成当前训练吗？')) {
+      return;
+    }
+
     setIsFinishing(true);
     setError(null);
 
-    const endIso = new Date().toISOString();
-
     try {
-      const { data, error: updateError } = await (supabase
-        .from('training_sessions') as any)
-        .update({
-          status: 'finished',
-          end_time: endIso,
-        } satisfies Database['public']['Tables']['training_sessions']['Update'])
-        .eq('id', session.id)
-        .select('*')
-        .single();
+      const response = await api.session.finishSession(session.id);
 
-      if (updateError) {
-        throw updateError;
+      if (response.error) {
+        throw new Error(response.error);
       }
 
-      setSession(data);
-      await loadLapStats(data.id);
-      router.push(`/history/${data.id}`);
+      if (response.data) {
+        setSession(response.data);
+        await loadLapStats(response.data.id);
+        router.push(`/history/${response.data.id}`);
+      }
     } catch (err) {
       console.error('Error finishing training session', err);
       setError('完成训练失败，请稍后重试');
@@ -333,33 +313,25 @@ export default function TrainingPage() {
     setIsFinishing(true);
     setError(null);
 
-    const endIso = new Date().toISOString();
-
     try {
-      const { data, error: updateError } = await (supabase
-        .from('training_sessions') as any)
-        .update({
-          status: 'abandoned',
-          end_time: endIso,
-        } satisfies Database['public']['Tables']['training_sessions']['Update'])
-        .eq('id', session.id)
-        .select('*')
-        .single();
+      const response = await api.session.cancelSession(session.id);
 
-      if (updateError) {
-        throw updateError;
+      if (response.error) {
+        throw new Error(response.error);
       }
 
-      setSession(data);
-      await loadLapStats(data.id);
-      router.push(`/`);
+      if (response.data) {
+        setSession(response.data);
+        await loadLapStats(response.data.id);
+        router.push(`/`);
+      }
     } catch (err) {
-      console.error('Error finishing training session', err);
+      console.error('Error cancelling training session', err);
       setError('取消训练失败，请稍后重试');
     } finally {
       setIsFinishing(false);
     }
-  }, [session, loadLapStats, router]);
+  }, [session, isFinishing, loadLapStats, router]);
 
   const totalLaps = lapStats.length;
   const completedFloors = session ? totalLaps * session.floors_per_lap : 0;
@@ -369,8 +341,20 @@ export default function TrainingPage() {
     return Math.max(0, Math.round(rate));
   }, [session, completedFloors]);
 
+  const inCooldown = cooldownSeconds > 0;
   const canOperate =
-    !!session && session.status === 'active' && !isCreatingLap && !isFinishing;
+    !!session && session.status === 'active' && !isCreatingLap && !isFinishing && !inCooldown;
+
+  // 冷却计时器
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
 
   if (initialLoading) {
     return (
@@ -513,125 +497,55 @@ export default function TrainingPage() {
         )}
 
         {session && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-3 md:grid-cols-1 gap-4">
-              <div className="bg-blue-50 rounded-lg p-4">
-                <p className="text-sm text-blue-600 font-medium mb-1">
-                  已用时间
-                </p>
-                <p className="text-2xl font-bold text-blue-900">
-                  {formatDuration(elapsedSeconds)}
-                </p>
-              </div>
-              <div className="bg-green-50 rounded-lg p-4">
-                <p className="text-sm text-green-600 font-medium mb-1">
-                  已完成楼层
-                </p>
-                <p className="text-2xl font-bold text-green-900">
-                  {completedFloors} 层
-                </p>
-              </div>
-              <div className="bg-purple-50 rounded-lg p-4">
-                <p className="text-sm text-purple-600 font-medium mb-1">
-                  完成进度
-                </p>
-                <p className="text-2xl font-bold text-purple-900">
-                  {completionRate}%
-                </p>
-              </div>
+          <div className="space-y-4">
+            {/* 训练时长显示 - 大号显示 */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-8 text-center">
+              <p className="text-sm text-blue-600 font-medium mb-2">训练时长</p>
+              <p className="text-5xl font-bold text-blue-900">{formatDuration(elapsedSeconds)}</p>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-1 gap-8">
-              <button
-                onClick={handleCompleteLap}
-                disabled={!canOperate}
-                className="items-center px-8 py-4 text-md font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isCreatingLap && (
-                  <svg
-                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                )}
-                完成本趟
-              </button>
-              <button
-                onClick={handleFinishTraining}
-                disabled={
-                  !session ||
-                  session.status !== 'active' ||
-                  isFinishing
-                }
-                className="items-center px-8 py-4 text-md font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isFinishing && (
-                  <svg
-                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                )}
-                完成训练
-              </button>
 
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-sm text-gray-500 mb-1">目标总楼层数</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {session.target_floors} 层
-                </p>
+            {/* 关键指标 - 两列显示 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10.5 1.5H3a1.5 1.5 0 00-1.5 1.5v12a1.5 1.5 0 001.5 1.5h10a1.5 1.5 0 001.5-1.5V8.5" />
+                  </svg>
+                  <p className="text-xs text-gray-500 font-medium">累计楼层</p>
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{completedFloors}</p>
+                <p className="text-xs text-gray-500 mt-1">/ {session.target_floors} 层</p>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-sm text-gray-500 mb-1">每趟楼层数</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {session.floors_per_lap} 层/趟
-                </p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-sm text-gray-500 mb-1">已完成趟数</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  第 {totalLaps} 趟
-                </p>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M5.5 13a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.3A4.5 4.5 0 1113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13H5.5z" />
+                  </svg>
+                  <p className="text-xs text-gray-500 font-medium">完成趟数</p>
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{totalLaps}</p>
+                <p className="text-xs text-gray-500 mt-1">{session.floors_per_lap} 层/趟</p>
               </div>
             </div>
 
-            <div className="space-y-3">
+            {/* 冷却状态提示 */}
+            {inCooldown && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-green-600 animate-spin" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 1119.414 6.414 1 1 0 01-1.414-1.414A5.002 5.002 0 005.659 5.109A1 1 0 014 6.664V3a1 1 0 01-1-1zm.008 9a1 1 0 011.992 0A5.002 5.002 0 0114.333 15H11a1 1 0 010-2h5a1 1 0 011 1v5a1 1 0 01-2 0v-3.667A7.002 7.002 0 004.008 11z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-sm font-medium text-green-700">冷却中，请稍候...</span>
+                </div>
+                <p className="text-lg font-bold text-green-900">{cooldownSeconds}s</p>
+              </div>
+            )}
+
+            {/* 目标达成度进度条 */}
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-600">目标达成度</p>
-                <p className="text-sm text-gray-700 font-medium">
-                  {completedFloors} / {session.target_floors} 层
-                </p>
+                <p className="text-sm font-semibold text-gray-900">{completionRate}%</p>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5">
                 <div
@@ -641,73 +555,94 @@ export default function TrainingPage() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              {session.status === 'finished' && (
-                <p className="text-sm text-gray-600">
-                  本次训练已完成，可以返回首页或查看历史记录。
-                </p>
-              )}
-            </div>
-            {/* 取消训练返回主页，需要确认 */}
-            <div className="grid grid-cols-1 md:grid-cols-1">
+            {/* 按钮组 */}
+            <div className="space-y-3">
+              {/* 完成本趟 - 单独一行 */}
               <button
-                type="button"
-                onClick={handleCancelTraining}
-                className="items-center px-8 py-4 text-md font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={handleCompleteLap}
+                disabled={!canOperate}
+                className="w-full flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
-                取消训练
+                {isCreatingLap ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    计录中...
+                  </>
+                ) : (
+                  '✓ 完成本趟'
+                )}
               </button>
+
+              {/* 结束训练和放弃 - 两列 */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleFinishTraining}
+                  disabled={!session || session.status !== 'active' || isFinishing}
+                  className="flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl bg-green-600 text-white hover:bg-green-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {isFinishing ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      结束中...
+                    </>
+                  ) : (
+                    '✓ 结束训练'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelTraining}
+                  className="flex items-center justify-center px-4 py-3 text-sm font-semibold rounded-xl text-red-600 border border-red-300 hover:bg-red-50 active:scale-95 transition-all"
+                >
+                  ✕ 放弃
+                </button>
+              </div>
             </div>
 
             <div className="border-t border-gray-100 pt-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                趟数记录
+                圈次记录
               </h3>
               {lapStats.length === 0 ? (
                 <p className="text-sm text-gray-500">
-                  还没有任何趟数记录，完成第一趟后会显示在这里。
+                  还没有任何圈次记录，完成第一圈后会显示在这里。
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th
-                          scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          趟数
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-0">
+                          圈数
                         </th>
-                        <th
-                          scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
+                        <th className="text-center text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4">
                           完成时间
                         </th>
-                        <th
-                          scope="col"
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
+                        <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-0">
                           本趟用时
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody>
                       {lapStats.map((lap) => (
-                        <tr key={lap.lap_id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                            第 {lap.lap_number} 趟
+                        <tr key={lap.lap_number} className="border-b border-gray-100 hover:bg-blue-50">
+                          <td className="py-3 px-0 text-sm font-medium text-gray-900">
+                            第 {lap.lap_number} 圈
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(
-                              lap.lap_finish_time
-                            ).toLocaleTimeString('zh-CN', {
+                          <td className="py-3 px-4 text-sm text-gray-600 text-center">
+                            {new Date(lap.lap_finish_time).toLocaleTimeString('zh-CN', {
                               hour: '2-digit',
                               minute: '2-digit',
                               second: '2-digit',
                             })}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          <td className="py-3 px-0 text-sm text-blue-600 text-right font-semibold">
                             {formatDuration(lap.lap_time_seconds)}
                           </td>
                         </tr>

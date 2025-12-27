@@ -2,18 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-import { Database } from '@/types/supabase';
-import { User } from '@supabase/supabase-js';
-
-// 定义类型
-type TrainingSessionRow = Database['public']['Tables']['training_sessions']['Row'];
+import { api, tokenManager } from '@/lib/apiService';
+import type { User, TrainingSession } from '@/lib/apiService';
 
 export default function HistoryPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [sessions, setSessions] = useState<TrainingSessionRow[]>([]);
+  const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
 
@@ -21,60 +18,59 @@ export default function HistoryPage() {
   useEffect(() => {
     const checkUser = async () => {
       try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        setUser(currentUser);
-
-        if (!currentUser) {
+        if (!tokenManager.isAuthenticated()) {
           router.push('/login');
+          return;
         }
+
+        const userResponse = await api.user.getCurrentUser();
+        if (userResponse.error || !userResponse.data) {
+          tokenManager.clearToken();
+          router.push('/login');
+          return;
+        }
+
+        setUser(userResponse.data);
       } catch (error) {
         console.error('Error checking user:', error);
+        tokenManager.clearToken();
         router.push('/login');
       }
     };
 
     checkUser();
-
-    // 监听认证状态变化
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session) {
-        router.push('/login');
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, [router]);
 
   // 获取用户的训练会话
+  const fetchSessions = async (forceUpdate: boolean = false) => {
+    setError(null);
+    if (!forceUpdate) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    try {
+      const response = await api.session.getFinishedSessions(forceUpdate);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      // 设置会话数据
+      setSessions(response.data || []);
+    } catch (err) {
+      setError('获取历史记录失败，请稍后重试');
+      console.error('Error fetching sessions:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-
-    const fetchSessions = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const { data, error } = await supabase
-          .from('training_sessions')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'finished')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        // 设置会话数据
-        setSessions(data || []);
-      } catch (err) {
-        setError('获取历史记录失败，请稍后重试');
-        console.error('Error fetching sessions:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchSessions();
+    fetchSessions(false);
   }, [user]);
 
   // 格式化日期时间
@@ -99,6 +95,11 @@ export default function HistoryPage() {
   // 返回上一页
   const handleBackClick = () => {
     router.push('/');
+  };
+
+  // 刷新数据
+  const handleRefresh = async () => {
+    await fetchSessions(true);
   };
 
 
@@ -141,8 +142,34 @@ export default function HistoryPage() {
       {/* 顶部标题栏 */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-lg mx-auto px-6 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">训练记录</h1>
-          <p className="mt-1 text-sm text-gray-500">查看您的历史训练数据</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">训练记录</h1>
+              <p className="mt-1 text-sm text-gray-500">查看您的历史训练数据</p>
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-gray-100 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="刷新数据"
+            >
+              <svg
+                className={`w-6 h-6 text-gray-600 transition-transform ${
+                  isRefreshing ? 'animate-spin' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
