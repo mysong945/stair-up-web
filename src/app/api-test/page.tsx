@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { api, tokenManager } from '@/lib/apiService';
+import { apiClient } from '@/lib/apiClient';
 
 export default function ApiTestPage() {
     const [result, setResult] = useState<string>('');
@@ -16,6 +17,13 @@ export default function ApiTestPage() {
         isAuthenticated: false,
         token: null,
     });
+    const [selectedUrl, setSelectedUrl] = useState<string>('');
+
+    // API 地址选项
+    const apiUrls = [
+        { label: '生产环境', value: process.env.NEXT_PUBLIC_API_BASE_URL || '' },
+        { label: '调试环境', value: process.env.NEXT_PUBLIC_API_BASE_URL_DEBUG || '' },
+    ];
 
     // 避免 SSR/CSR 不一致：仅在客户端读取 localStorage 中的 token
     useEffect(() => {
@@ -23,8 +31,16 @@ export default function ApiTestPage() {
             isAuthenticated: tokenManager.isAuthenticated(),
             token: tokenManager.getToken(),
         });
+        setSelectedUrl(apiClient.getBaseUrl());
         setHydrated(true);
     }, []);
+
+    // 处理 URL 切换
+    const handleUrlChange = (url: string) => {
+        setSelectedUrl(url);
+        apiClient.setBaseUrl(url);
+        setResult(`✅ 已切换到: ${url}`);
+    };
 
     const runTest = async (testName: string, testFn: () => Promise<any>) => {
         setLoading(true);
@@ -131,9 +147,33 @@ export default function ApiTestPage() {
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                     <h2 className="text-lg font-semibold mb-2">⚙️ API 配置</h2>
-                    <div className="space-y-2 text-sm">
+                    
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            选择 API 地址：
+                        </label>
+                        <div className="space-y-2">
+                            {apiUrls.map((url) => (
+                                <label key={url.value} className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="apiUrl"
+                                        value={url.value}
+                                        checked={selectedUrl === url.value}
+                                        onChange={(e) => handleUrlChange(e.target.value)}
+                                        className="w-4 h-4 text-blue-600"
+                                    />
+                                    <span className="text-sm">
+                                        <strong>{url.label}:</strong> <code className="bg-white px-2 py-1 rounded text-xs">{url.value}</code>
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 text-sm pt-3 border-t border-blue-300">
                         <p className="text-gray-700">
-                            后台地址: <code className="bg-white px-2 py-1 rounded">{process.env.NEXT_PUBLIC_API_BASE_URL || '未配置'}</code>
+                            当前使用: <code className="bg-white px-2 py-1 rounded font-semibold">{selectedUrl || '未配置'}</code>
                         </p>
                         <p className="text-gray-700">
                             代理模式: <code className="bg-white px-2 py-1 rounded">
@@ -142,7 +182,7 @@ export default function ApiTestPage() {
                         </p>
                     </div>
                     <p className="text-xs text-gray-500 mt-3">
-                        💡 代理模式可以绕过 CORS 跨域限制。如果遇到 CORS 错误，请确保代理模式已启用。
+                        💡 可以在测试前切换不同的 API 地址，无需重启服务。
                     </p>
                 </div>
 

@@ -8,10 +8,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://10.10.81.19
 const API_VERSION = '/api/v1';
 const TOKEN_KEY = 'auth_token';
 
-// 是否使用代理模式（解决 CORS 问题）
-// 开发环境建议设置为 true，生产环境如果后台配置了 CORS 可以设置为 false
-const USE_PROXY = process.env.NEXT_PUBLIC_USE_API_PROXY !== 'false'; // 默认使用代理
-
 // ==================== 类型定义 ====================
 interface ApiResponse<T = any> {
     data?: T;
@@ -70,16 +66,24 @@ class ApiClient {
     }
 
     /**
+     * 动态设置 API 基础地址
+     */
+    setBaseUrl(url: string) {
+        this.baseUrl = url;
+    }
+
+    /**
+     * 获取当前 API 基础地址
+     */
+    getBaseUrl(): string {
+        return this.baseUrl;
+    }
+
+    /**
      * 构建完整 URL
      */
     private buildUrl(endpoint: string): string {
-        // 如果使用代理模式，请求发送到本地的 /api/proxy
-        if (USE_PROXY && typeof window !== 'undefined') {
-            const path = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
-            return `/api/proxy/${path}`;
-        }
-
-        // 直接模式：直接请求后台 API
+        // 直接请求后台 API
         const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         return `${this.baseUrl}${API_VERSION}${path}`;
     }
