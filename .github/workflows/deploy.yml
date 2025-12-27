@@ -27,7 +27,7 @@ jobs:
 
             # 2. 拉取最新代码
             git pull origin main && \
-            pnpm install --frozen-lockfile && \
+            pnpm install && \
             pnpm build && \
             (pm2 delete stair-up-web || true) && \
             pm2 start pnpm --name "stair-up-web" -- start && \
