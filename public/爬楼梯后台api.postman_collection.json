@@ -1,0 +1,294 @@
+{
+    "info": {
+        "name": "爬楼梯后台api",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "name": "爬楼梯后台api",
+    "item": [
+        {
+            "name": "用户",
+            "item": [
+                {
+                    "name": "注册",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "http://47.100.29.129:7080/api/v1/register",
+                            "host": [
+                                "47.100.29.129"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/register",
+                            "query": []
+                        },
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"username\": \"aaa\",\n  \"email\": \"a@a.com\",\n  \"password\": \"ahjicsdjchgsivchdsvhvhbdsfvbhsfv\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": null
+                    }
+                },
+                {
+                    "name": "登录",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/login",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/login",
+                            "query": []
+                        },
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"username\": \"mysong\",\n  \"email\": \"mysong945@qq.com\",\n  \"password\": \"Smy116035@\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": null
+                    }
+                },
+                {
+                    "name": "me",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/me",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/me",
+                            "query": []
+                        },
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDYwMDUxNzItMDI2Ni00Yzg1LWI2YzgtOWY1M2ExZTkyNmVkIiwidXNlcm5hbWUiOiJteXNvbmciLCJpc3MiOiJzdGFpcnMtdXAtYXBpIiwiZXhwIjoxNzY2OTk1MTQ4LCJpYXQiOjE3NjYzOTAzNDh9.jgpdTg0ckV2pmW7hDwGkN_I3lchY5H_4qcoDNtePtHw",
+                                "disabled": false
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"username\": \"mysong111\",\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": null
+                    }
+                },
+                {
+                    "name": "me -stats",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/me/stats",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/me/stats",
+                            "query": []
+                        },
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDYwMDUxNzItMDI2Ni00Yzg1LWI2YzgtOWY1M2ExZTkyNmVkIiwidXNlcm5hbWUiOiJteXNvbmciLCJpc3MiOiJzdGFpcnMtdXAtYXBpIiwiZXhwIjoxNzY2ODQ4MDE4LCJpYXQiOjE3NjYyNDMyMTh9.A-Gt8lulLAfOnKUu7h02fMG9S3-ODUqYKRO3EqftXZM",
+                                "disabled": false
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"username\": \"mysong111\",\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": null
+                    }
+                },
+                {
+                    "name": "更新",
+                    "request": {
+                        "method": "PUT",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/me",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/me",
+                            "query": []
+                        },
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDYwMDUxNzItMDI2Ni00Yzg1LWI2YzgtOWY1M2ExZTkyNmVkIiwidXNlcm5hbWUiOiJteXNvbmciLCJpc3MiOiJzdGFpcnMtdXAtYXBpIiwiZXhwIjoxNzY2ODQ4MDE4LCJpYXQiOjE3NjYyNDMyMTh9.A-Gt8lulLAfOnKUu7h02fMG9S3-ODUqYKRO3EqftXZM",
+                                "disabled": false
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"mysong111\",\n    \"metadata\": {\n        \"nickname\": \"jack\",\n        \"phone\": \"111\"\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": null
+                    }
+                },
+                {
+                    "name": "排行榜",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/rankings?limit=20&by=total_sessions&force_update=false",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/rankings",
+                            "query": [
+                                {
+                                    "key": "limit",
+                                    "value": "20"
+                                },
+                                {
+                                    "key": "by",
+                                    "value": "total_sessions"
+                                },
+                                {
+                                    "key": "force_update",
+                                    "value": "false"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDYwMDUxNzItMDI2Ni00Yzg1LWI2YzgtOWY1M2ExZTkyNmVkIiwidXNlcm5hbWUiOiJteXNvbmciLCJpc3MiOiJzdGFpcnMtdXAtYXBpIiwiZXhwIjoxNzY2ODQ4MDE4LCJpYXQiOjE3NjYyNDMyMTh9.A-Gt8lulLAfOnKUu7h02fMG9S3-ODUqYKRO3EqftXZM",
+                                "disabled": false
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"username\": \"mysong111\",\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": null
+                    }
+                }
+            ]
+        },
+        {
+            "name": "训练",
+            "item": [
+                {
+                    "name": "GetSessions",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/sessions?forceUpdate=true",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/sessions",
+                            "query": [
+                                {
+                                    "key": "forceUpdate",
+                                    "value": "true"
+                                }
+                            ]
+                        },
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDYwMDUxNzItMDI2Ni00Yzg1LWI2YzgtOWY1M2ExZTkyNmVkIiwidXNlcm5hbWUiOiJteXNvbmciLCJpc3MiOiJzdGFpcnMtdXAtYXBpIiwiZXhwIjoxNzY2ODk0NjI2LCJpYXQiOjE3NjYyODk4MjZ9._dL4c4qogvIUilFj_DhNsQ_mNkh9eR5Nv9UTxRqh7h8",
+                                "disabled": false
+                            }
+                        ],
+                        "body": null,
+                        "auth": null
+                    }
+                },
+                {
+                    "name": "GetSessionBySid",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/sessions/050a8ed6-dc32-4177-872d-b11817a9bdb7",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/sessions/050a8ed6-dc32-4177-872d-b11817a9bdb7",
+                            "query": []
+                        },
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDYwMDUxNzItMDI2Ni00Yzg1LWI2YzgtOWY1M2ExZTkyNmVkIiwidXNlcm5hbWUiOiJteXNvbmciLCJpc3MiOiJzdGFpcnMtdXAtYXBpIiwiZXhwIjoxNzY2ODk0NjI2LCJpYXQiOjE3NjYyODk4MjZ9._dL4c4qogvIUilFj_DhNsQ_mNkh9eR5Nv9UTxRqh7h8",
+                                "disabled": false
+                            }
+                        ],
+                        "body": null,
+                        "auth": null
+                    }
+                }
+            ]
+        },
+        {
+            "name": "圈数",
+            "item": [
+                {
+                    "name": "GetLapStatsById",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "http://10.10.81.199:7080/api/v1/lap/stats/68f8a053-6a9b-451f-9db1-1966c2d7e8ff",
+                            "host": [
+                                "10.10.81.199"
+                            ],
+                            "protocol": "http",
+                            "path": "/api/v1/lap/stats/68f8a053-6a9b-451f-9db1-1966c2d7e8ff",
+                            "query": []
+                        },
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDYwMDUxNzItMDI2Ni00Yzg1LWI2YzgtOWY1M2ExZTkyNmVkIiwidXNlcm5hbWUiOiJteXNvbmciLCJpc3MiOiJzdGFpcnMtdXAtYXBpIiwiZXhwIjoxNzY2ODk0NjI2LCJpYXQiOjE3NjYyODk4MjZ9._dL4c4qogvIUilFj_DhNsQ_mNkh9eR5Nv9UTxRqh7h8",
+                                "disabled": false
+                            }
+                        ],
+                        "body": null,
+                        "auth": null
+                    }
+                }
+            ]
+        }
+    ]
+}
