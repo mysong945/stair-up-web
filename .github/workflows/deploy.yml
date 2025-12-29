@@ -25,11 +25,11 @@ jobs:
             set -e
 
             echo "==> 准备部署目录"
-            if [ ! -d /Deploy/stair-up-web ]; then
+            if [ ! -d /deploy/stair-up-web ]; then
               echo "==> 首次克隆仓库"
-              git clone git@github.com:${{ github.repository }}.git /Deploy/stair-up-web
+              git clone git@github.com:${{ github.repository }}.git /deploy/stair-up-web
             fi
-            cd /Deploy/stair-up-web
+            cd /deploy/stair-up-web
             
             echo "==> 拉取最新代码（如失败会再尝试一次）"
             git pull origin main || git pull origin main
